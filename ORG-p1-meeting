@@ -1,0 +1,19 @@
+2018/12/4
+
+1. develop overall algorithm [GROUP]
+  get an overview of pseudocode with functions defined clearly
+2. split the work and assign to individuals [GROUP]
+  if possible, write test functions for each functions
+3. code and test individually [INDIVIDUAL]
+4. combine together and debug [GROUP or INDIVIDUAL]
+
+The deadline is extended to 12/11, next Tuesday.
+
+Major features:
+  support add, addi, and, andi, or, ori, slt, slti, beq, bne
+  support data hazard & forwarding
+  support control hazard
+  support lowercase label
+  support register $t and $s
+
+branch prediction is always "branch not taken".
