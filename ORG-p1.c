@@ -34,15 +34,15 @@ struct registers {
 };
 
 struct instructions {
-  char o_ins[10][128];   // original instructions
-  char le_ins[10][128];  // label excluded instructions
+  char o_ins[10][128];                  // original instructions
+  char le_ins[10][128];                 // label excluded instructions
   int o_count;                          // original instructions count
-  int l_pos[10];           // position that label points to
-  char l[10][128]; // name of the labels
+  int l_pos[10];                        // position that label points to
+  char l[10][128];                      // name of the labels
   int le_count;                         // label excluded instructions count
   int l_count;                          // count of labels
   int w_count;                          // count of working instructions
-  char w_ins[16][128];   // working instructions
+  char w_ins[16][128];                  // working instructions
 };
 
 void data_init(struct registers *reg, struct instructions *ins);
