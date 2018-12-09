@@ -22,7 +22,6 @@ const int buffer_size = 128;            // the size of buffer is set to 128
 const char nop[4] = "nop";              // string for no operation
 
 // #define debug                           // flag for debugging
-// #define stupiddebug1                    // flag for stupid debugging
 
 struct registers {
   int t[10];
@@ -327,17 +326,12 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
   else
     printf("START OF SIMULATION (no forwarding)\n");
   while (time < cycle_max) {
+    int stall = 0;
     ++time;                             // increment the frame of time
-#ifdef stupiddebug1
+#ifdef debug
   printf("time = %d\n", time);
 #endif
-    if (next_ins != -1) {               // if there is next instruction
-      strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
-      next_ins = next_ins + 1;
-    }
-    if (next_ins >= ins->le_count)      // if current instruction is the last
-      next_ins = -1;                    // there is no next instruction
-#ifdef stupiddebug1
+#ifdef debug
   printf("next_ins = %d\n", next_ins);    
   printf("ins->w_count = %d\n", ins->w_count);
 #endif
@@ -348,7 +342,7 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
         else
           w_table[i][time] = w_table[i][time - 1] + 1;
       }
-#ifdef stupiddebug1
+#ifdef debug
   printf("print preliminary table\n");
   print_table(ins, w_table);
   printf("print w_done\n");
@@ -356,13 +350,19 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
     printf("    ins #%d is %d\n", i, w_done[i]);
 #endif
     for (i = 0; i < ins->w_count; ++i) {
-      if (w_table[i][time] == 6 || strcmp(ins->w_ins[i], nop) == 0) {
-        // if there is a bubble here, which can be cause by nop or
-        // invalidated instructions due to control hazard
-        if (w_table[i][time - 4] == 1)
+      if (w_table[i][time - 1] == 6) {
+        for (j = time; j >= 0; j--)
+          if (w_table[i][j] != 6)
+            break;
+        if (j + 5 - w_table[i][j] == time - 1) {
+          w_table[i][time] = 0;
           w_done[i] = 1;
-        continue;
+        } else {
+          w_table[i][time] = 6;
+        }
       }
+      if (strcmp(ins->w_ins[i], nop) == 0)
+        continue;
       char parsed[4][buffer_size];
       ins_parse(ins->w_ins[i], parsed);
       // reset the register access flag immediately after EX or WB, depending
@@ -401,7 +401,7 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
                   nop_count = 1;
               }
             }
-#ifdef stupiddebug1
+#ifdef debug
   printf("nop_count = %d\n", nop_count);
   printf("reg_access_state = %d\n", reg_access_state);
 #endif
@@ -431,10 +431,12 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
           }
           // update w_count
           ins->w_count += nop_count;
+          stall = 1;
         } else if (reg_access_state) {
           // no need to add nop, but still stall due to two consecutive nops
           for (j = i; j < ins->w_count; j++)
             w_table[j][time] = w_table[j][time - 1];
+          stall = 1;
         } else {
           // if no need to add nop or to stall, then just go to EX
           set_reg_access(reg, parsed[1]);
@@ -454,7 +456,7 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
           assert(strcmp(parsed[0], "beq") == 0);
           redirect = (a == b);
         }
-#ifdef stupiddebug1
+#ifdef debug
   printf("redirect = %d\n", redirect);
 #endif
         if (redirect) {
@@ -486,6 +488,16 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
       if (w_table[i][time] == 5 && ins->w_ins[i][0] != 'b')
         calculate(reg, ins->w_ins[i]);
     }
+    if (!stall) {
+      if (next_ins != -1) {               // if there is next instruction
+        strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
+        next_ins = next_ins + 1;
+        w_table[ins->w_count - 1][time] = 1;
+      }
+      if (next_ins >= ins->le_count)      // if current instruction is the last
+        next_ins = -1;                    // there is no next instruction
+    } else
+      stall = 0;
     // print out the results
     char buffer[buffer_size];
     memset(buffer, '-', 82);

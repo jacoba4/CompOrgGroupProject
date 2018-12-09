@@ -21,8 +21,30 @@ const int instruction_max = 10;         // max count of instructions is 10
 const int buffer_size = 128;            // the size of buffer is set to 128
 const char nop[4] = "nop";              // string for no operation
 
-// #define debug                           // flag for debugging
-// #define stupiddebug1                    // flag for stupid debugging
+// #define debug                        // flag for debugging
+
+/*
+struct registers {
+  int t[t_max];
+  int s[s_max];
+  char t_name[t_max][8];
+  char s_name[s_max][8];
+  int t_access[t_max];
+  int s_access[s_max];
+};
+
+struct instructions {
+  char o_ins[instruction_max][buffer_size];   // original instructions
+  char le_ins[instruction_max][buffer_size];  // label excluded instructions
+  int o_count;                          // original instructions count
+  int l_pos[instruction_max];           // position that label points to
+  char l[instruction_max][buffer_size]; // name of the labels
+  int le_count;                         // label excluded instructions count
+  int l_count;                          // count of labels
+  int w_count;                          // count of working instructions
+  char w_ins[cycle_max][buffer_size];   // working instructions
+};
+*/
 
 struct registers {
   int t[10];
@@ -327,16 +349,23 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
     printf("START OF SIMULATION (no forwarding)\n");
   while (time < cycle_max) {
     ++time;                             // increment the frame of time
-#ifdef stupiddebug1
+#ifdef debug
+  printf("############################################################\n");
+  printf("############################################################\n");
+  printf("############################################################\n");
   printf("time = %d\n", time);
 #endif
     if (next_ins != -1) {               // if there is next instruction
       strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
+      printf("strcpy  ins->w_ins[ins->w_count++] from ins->le_ins[next_ins] = [%s]\n", ins->le_ins[next_ins]);
+      strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
       next_ins = next_ins + 1;
     }
-    if (next_ins >= ins->le_count)      // if current instruction is the last
+    if (next_ins >= ins->le_count) {     // if current instruction is the last
       next_ins = -1;                    // there is no next instruction
-#ifdef stupiddebug1
+      printf("next_ins >= ins->le_count\n");
+    }
+#ifdef debug
   printf("next_ins = %d\n", next_ins);    
   printf("ins->w_count = %d\n", ins->w_count);
 #endif
@@ -347,7 +376,7 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
         else
           w_table[i][time] = w_table[i][time - 1] + 1;
       }
-#ifdef stupiddebug1
+#ifdef debug
   printf("print preliminary table\n");
   print_table(ins, w_table);
   printf("print w_done\n");
@@ -355,12 +384,18 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
     printf("    ins #%d is %d\n", i, w_done[i]);
 #endif
     for (i = 0; i < ins->w_count; ++i) {
-      if (w_table[i][time] == 6 || strcmp(ins->w_ins[i], nop) == 0) {
-        // if there is a bubble here, which can be cause by nop or
-        // invalidated instructions due to control hazard
-        if (w_table[i][time - 4] == 1)
+      if (w_table[i][time - 1] == 6) {
+        for (j = time; j >= 0; j--)
+          if (w_table[i][j] != 6)
+            break;
+        if (j + 5 - w_table[i][j] == time - 1) {
+          w_table[i][time] = 0;
           w_done[i] = 1;
-        continue;
+        } else {
+          w_table[i][time] = 6;
+        }
+        if (strcmp(ins->w_ins[i], nop) == 0)
+          continue;
       }
       char parsed[4][buffer_size];
       ins_parse(ins->w_ins[i], parsed);
@@ -375,17 +410,30 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
       // set the w_done state after WB
       if (w_table[i][time] == 5)
         w_done[i] = 1;
-      // handle the data hazard when encounter EX
-      if (w_table[i][time] == 3 && ins->w_ins[i][0] != 'b') {
+      // handle the data hazard when encounter EX for non-branch instruction
+      // and MEM for branch instruction
+      if ((w_table[i][time] == 3 && ins->w_ins[i][0] != 'b') ||
+        (w_table[i][time] == 4 && ins->w_ins[i][0] == 'b')) {
         int nop_count = 0;              // count of nop that need to be added
         int reg_access_state = 0;
-        // check for access state of rs, rt, and determine nop_count
-        for (j = 2; j < 4; ++j)
+        int stall;                      // flag for stalling
+        int a, b;
+        if (ins->w_ins[i][0] == 'b') {
+          // for branch, check for access state of rd, rs
+          a = 1;
+          b = 3;
+        } else {
+          // for non-branch, check for access state of rs, rt
+          a = 2;
+          b = 4;
+        }
+        // determine nop_count
+        for (j = a; j < b; ++j)
           if (parsed[j][0] == '$' && strcmp(parsed[j], "$zero"))
             if (check_reg_access(reg, parsed[j]) == 1) {
               reg_access_state = 1;
               // data hazard has occurred
-              if (strcmp(ins->w_ins[i - 1], nop)) {
+              if (strcmp(ins->w_ins[i - 1], nop) && ins->w_ins[i - 1][0] != 'b') {
                 char parsed1[4][buffer_size];
                 ins_parse(ins->w_ins[i - 1], parsed1);
                 if (strcmp(parsed1[1], parsed[j]) == 0) {
@@ -393,17 +441,20 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
                   break;
                 }
               }
-              if (i - 2 >= 0 && strcmp(ins->w_ins[i - 2], nop)) {
+              if (i - 2 >= 0 && strcmp(ins->w_ins[i - 2], nop) && ins->w_ins[i - 1][0] != 'b') {
                 char parsed2[4][buffer_size];
                 ins_parse(ins->w_ins[i - 2], parsed2);
                 if (strcmp(parsed2[1], parsed[j]) == 0)
                   nop_count = 1;
               }
             }
-#ifdef stupiddebug1
+        if (ins->w_ins[i][0] == 'b' && nop_count > 0)
+          --nop_count;
+#ifdef debug
   printf("nop_count = %d\n", nop_count);
   printf("reg_access_state = %d\n", reg_access_state);
 #endif
+        stall = 1;
         if (nop_count > 0) {
           // add nop to the working instructions
           for (j = ins->w_count - 1 + nop_count; j >= i + nop_count; --j) {
@@ -437,7 +488,15 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
         } else {
           // if no need to add nop or to stall, then just go to EX
           set_reg_access(reg, parsed[1]);
+          stall = 0;
         }
+        if (stall) {
+          --ins->w_count;
+          --next_ins;
+        }
+#ifdef debug
+  printf("stall = %d\n", stall);
+#endif
       }
       // handle the control hazard immediately after MEM
       if (w_table[i][time] == 5 && ins->w_ins[i][0] == 'b') {
@@ -453,7 +512,7 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
           assert(strcmp(parsed[0], "beq") == 0);
           redirect = (a == b);
         }
-#ifdef stupiddebug1
+#ifdef debug
   printf("redirect = %d\n", redirect);
 #endif
         if (redirect) {
