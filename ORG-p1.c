@@ -25,24 +25,24 @@ const char nop[4] = "nop";              // string for no operation
 // #define stupiddebug1                    // flag for stupid debugging
 
 struct registers {
-  int t[t_max];
-  int s[s_max];
-  char t_name[t_max][8];
-  char s_name[s_max][8];
-  int t_access[t_max];
-  int s_access[s_max];
+  int t[10];
+  int s[8];
+  char t_name[10][8];
+  char s_name[8][8];
+  int t_access[10];
+  int s_access[8];
 };
 
 struct instructions {
-  char o_ins[instruction_max][buffer_size];   // original instructions
-  char le_ins[instruction_max][buffer_size];  // label excluded instructions
+  char o_ins[10][128];   // original instructions
+  char le_ins[10][128];  // label excluded instructions
   int o_count;                          // original instructions count
-  int l_pos[instruction_max];           // position that label points to
-  char l[instruction_max][buffer_size]; // name of the labels
+  int l_pos[10];           // position that label points to
+  char l[10][128]; // name of the labels
   int le_count;                         // label excluded instructions count
   int l_count;                          // count of labels
   int w_count;                          // count of working instructions
-  char w_ins[cycle_max][buffer_size];   // working instructions
+  char w_ins[16][128];   // working instructions
 };
 
 void data_init(struct registers *reg, struct instructions *ins);
