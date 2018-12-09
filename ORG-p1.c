@@ -119,6 +119,7 @@ int main(int argc, char **argv) {
 
   // pipeline
   pipeline(&reg, &ins, forwarding);
+  return EXIT_SUCCESS;
 }
 
 void data_init(struct registers *reg, struct instructions *ins) {
