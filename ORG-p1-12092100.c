@@ -25,6 +25,8 @@
 #define buffer_size 128                 // the size of buffer is set to 128
 const char nop[4] = "nop";              // string for no operation
 
+// #define debug                           // flag for debugging
+
 
 struct registers {
   int t[t_max];   char t_name[t_max][8];    int t_access[t_max];
@@ -120,8 +122,28 @@ int main(int argc, char **argv) {
   }
   fclose(ins_file);
 
+#ifdef debug
+  int i;
+  printf("original instructions read from the file:\n");
+  for (i = 0; i < ins.o_count; ++i)
+    printf("    instruction #%d is [%s].\n", i, ins.o_ins[i]);
+#endif
+
   // preprocess the labels
   label_preprocess(&ins);
+
+#ifdef debug
+  printf("label excluded instructions:\n");
+  for (i = 0; i < ins.le_count; ++i)
+    printf("    instruction #%d is [%s].\n", i, ins.le_ins[i]);
+  printf("labels:\n");
+  for (i = 0; i < ins.l_count; ++i) {
+    printf("    label #%d is [%s], ", i, ins.l[i]);
+    printf("pointing to instruction #%d above.\n", ins.l_pos[i]);
+  }
+  if (ins.l_count == 0)
+    printf("    no label found in the given instructions.\n");
+#endif
 
   // pipeline
   pipeline(&reg, &ins, forwarding);
@@ -355,6 +377,13 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
   while (time < cycle_max) {
     int stall = 0;                      // flag for stall of pipelining
     ++time;                             // increment the frame of time
+#ifdef debug
+  printf("#########################################################\n");
+  printf("#########################################################\n");
+  printf("    (*) time = %d\n", time);
+  printf("    (*) next_ins = %d\n", next_ins);    
+  printf("    (*) ins->w_count = %d\n", ins->w_count);
+#endif
     for (i = 0; i < ins->w_count; ++i)
       if (w_done[i] == 0) {             // if this instruction is not done
         if (w_table[i][time - 1] == 6)  // if previous stage is a bubble
@@ -362,6 +391,13 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
         else                            // else, increment the stage
           w_table[i][time] = w_table[i][time - 1] + 1;
       }
+#ifdef debug
+  printf("print preliminary table\n");
+  print_table(ins, w_table);
+  printf("print w_done\n");
+  for (i = 0; i < ins->w_count; ++i)
+    printf("    instruction #%d is %d\n", i, w_done[i]);
+#endif
     for (i = 0; i < ins->w_count; ++i) {
       if (w_table[i][time - 1] == 6) {    // handle the special case of nop
         for (j = time; j >= 0; j--)       // and invalidated instruction
@@ -425,6 +461,10 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
               }
             }
           }
+#ifdef debug
+  printf("nop_count for instruction[%d] = %d\n", i, nop_count);
+  printf("reg_access_state = %d\n", reg_access_state);
+#endif
         if (nop_count > 0) {
           // add nop to the working instructions
           for (j = ins->w_count - 1 + nop_count; j >= i + nop_count; --j) {
@@ -494,6 +534,9 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
             }
           }
           // immediately add the redirected instruction
+#ifdef debug
+  printf("redirect next_ins to be %d\n", next_ins);
+#endif
           if (0 <= next_ins && next_ins < ins->le_count) {
             // if next location is pointing to some valid instruction
             strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
@@ -510,6 +553,9 @@ void pipeline(struct registers *reg, struct instructions *ins, int forwarding) {
       if (w_table[i][time] == 5 && ins->w_ins[i][0] != 'b')
         calculate(reg, ins->w_ins[i]);
     }
+#ifdef debug
+  printf("stall = %d\n", stall);
+#endif
     if (!stall) {
       if (next_ins != -1) {               // if there is next instruction
         strcpy(ins->w_ins[ins->w_count++], ins->le_ins[next_ins]);
